@@ -3,6 +3,7 @@ from rest_framework.test import APITestCase
 from rest_framework.authtoken.models import Token
 from django.urls import reverse
 from .models import Book
+from django.contrib.auth import get_user_model
 
 
 class BookAPITest(APITestCase):
@@ -35,6 +36,8 @@ class BookAPITest(APITestCase):
         resp = self.client.post('/api/books/', data)
         self.assertEqual(resp.status_code, 201)
         self.assertEqual(Book.objects.filter(title='New Book').count(), 1)
+        book = Book.objects.get(title='New Book')
+        self.assertEqual(book.user, self.user)
 
     def test_list_and_filter_books(self):
         self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token.key)
@@ -72,3 +75,31 @@ class BookAPITest(APITestCase):
             HTTP_AUTHORIZATION='Token ' + self.admin_token.key)
         resp = self.client.delete(f'/api/books/{book.id}/')
         self.assertEqual(resp.status_code, 204)
+
+    def test_register_api(self):
+        # register new user via API
+        data = {'username': 'newuser', 'password': 'newpass'}
+        resp = self.client.post('/api/auth/register/', data)
+        self.assertEqual(resp.status_code, 201)
+        self.assertIn('token', resp.data)
+
+    def test_login_api_returns_token(self):
+        # use existing user
+        data = {'username': 'user', 'password': 'pass'}
+        resp = self.client.post('/api/auth/login/', data)
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('token', resp.data)
+
+    def test_ordering_by_publication_year(self):
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token.key)
+        resp = self.client.get('/api/books/?ordering=publication_year')
+        self.assertEqual(resp.status_code, 200)
+        years = [b['publication_year'] for b in resp.data['results']]
+        self.assertEqual(years, sorted(years))
+
+    def test_ordering_by_title_desc(self):
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + self.token.key)
+        resp = self.client.get('/api/books/?ordering=-title')
+        self.assertEqual(resp.status_code, 200)
+        titles = [b['title'] for b in resp.data['results']]
+        self.assertEqual(titles, sorted(titles, reverse=True))
